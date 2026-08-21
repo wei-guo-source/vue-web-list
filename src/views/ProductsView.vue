@@ -1,210 +1,114 @@
 <script setup>
-// 引入 Vue 3 核心響應式 API
 import { ref, reactive, computed } from 'vue'
-// 引入 Element Plus 提示與對話框元件
-import { ElMessage, ElMessageBox } from 'element-plus'
-// 引入路由實例用於跳轉新增頁面
 import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useProductStore } from '../stores/product'
 
 const router = useRouter()
+const productStore = useProductStore()
 
-// ==========================================
-// 1. 響應式狀態定義
-// ==========================================
-// 載入中狀態（模擬 API 請求）
-const loading = ref(false)
-
-// 搜尋與篩選條件表單
 const queryForm = reactive({
   keyword: '',
   category: '',
-  status: ''
+  status: '',
+  stockWarningOnly: false // 僅篩選庫存預警商品
 })
 
-// 分頁控制參數
 const pagination = reactive({
   currentPage: 1,
   pageSize: 5
 })
 
-// 被勾選的多選項目陣列
 const selectedRows = ref([])
 
-// ==========================================
-// 2. 原始商品資料清單（模擬後端資料庫回傳）
-// ==========================================
-const productList = ref([
-  {
-    id: 101,
-    name: 'Vue 3 高階組件設計手冊',
-    category: '線上課程',
-    price: 1880,
-    stock: 99,
-    status: true,
-    cover: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=100'
-  },
-  {
-    id: 102,
-    name: 'TypeScript 實戰精通密笈',
-    category: '實體書籍',
-    price: 680,
-    stock: 12,
-    status: true,
-    cover: 'https://images.unsplash.com/photo-1532012164546-f432f2e3777a?w=100'
-  },
-  {
-    id: 103,
-    name: '機械式人體工學鍵盤 (青軸)',
-    category: '周邊硬體',
-    price: 3490,
-    stock: 5,
-    status: false,
-    cover: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=100'
-  },
-  {
-    id: 104,
-    name: '4K IPS 專業級色彩顯示器',
-    category: '周邊硬體',
-    price: 12900,
-    stock: 0,
-    status: false,
-    cover: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=100'
-  },
-  {
-    id: 105,
-    name: 'Pinia 全域狀態架構實務班',
-    category: '線上課程',
-    price: 2400,
-    stock: 150,
-    status: true,
-    cover: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=100'
-  },
-  {
-    id: 106,
-    name: 'Vite 高速打包工程化指引',
-    category: '實體書籍',
-    price: 520,
-    stock: 38,
-    status: true,
-    cover: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=100'
-  }
-])
-
-// ==========================================
-// 3. 計算屬性：多條件篩選與分頁切片運算
-// ==========================================
-// 先依據關鍵字、分類、狀態進行過濾
+// 多條件篩選（連動 Pinia 資料源）
 const filteredProducts = computed(() => {
-  return productList.value.filter(item => {
-    // 關鍵字搜尋（比對名稱）
+  return productStore.products.filter(item => {
     const matchKeyword = queryForm.keyword
-      ? item.name.toLowerCase().includes(queryForm.keyword.toLowerCase().trim())
+      ? (item.name.toLowerCase().includes(queryForm.keyword.toLowerCase().trim()) ||
+         item.sku.toLowerCase().includes(queryForm.keyword.toLowerCase().trim()))
       : true
 
-    // 分類篩選
-    const matchCategory = queryForm.category
-      ? item.category === queryForm.category
-      : true
+    const matchCategory = queryForm.category ? item.category === queryForm.category : true
+    const matchStatus = queryForm.status !== '' ? item.status === (queryForm.status === 'active') : true
+    const matchWarning = queryForm.stockWarningOnly ? item.stock <= item.minStock : true
 
-    // 狀態篩選
-    const matchStatus = queryForm.status !== ''
-      ? item.status === (queryForm.status === 'active')
-      : true
-
-    return matchKeyword && matchCategory && matchStatus
+    return matchKeyword && matchCategory && matchStatus && matchWarning
   })
 })
 
-// 再將過濾後的結果依照當前頁碼進行分頁切片（Pagination Slice）
+// 分頁切片
 const displayedProducts = computed(() => {
   const start = (pagination.currentPage - 1) * pagination.pageSize
-  const end = start + pagination.pageSize
-  return filteredProducts.value.slice(start, end)
+  return filteredProducts.value.slice(start, start + pagination.pageSize)
 })
 
-// ==========================================
-// 4. 事件處理方法
-// ==========================================
-// 搜尋重設
 function handleReset() {
   queryForm.keyword = ''
   queryForm.category = ''
   queryForm.status = ''
+  queryForm.stockWarningOnly = false
   pagination.currentPage = 1
-  ElMessage.info('篩選條件已重設')
 }
 
-// 表格勾選項目變更
 function handleSelectionChange(rows) {
   selectedRows.value = rows
 }
 
-// 單一商品上架狀態切換
 function handleStatusChange(row) {
-  ElMessage.success(`商品 [${row.name}] 狀態已更新為：${row.status ? '上架中' : '已下架'}`)
+  productStore.updateProduct(row.id, { status: row.status })
+  ElMessage.success(`商品 [${row.name}] 狀態已更新`)
 }
 
-// 單一刪除
 function handleDelete(row) {
-  ElMessageBox.confirm(
-    `確定要刪除商品「${row.name}」嗎？此操作不可逆！`,
-    '安全警告',
-    {
-      confirmButtonText: '確定刪除',
-      cancelButtonText: '取消',
-      type: 'warning'
-    }
-  ).then(() => {
-    productList.value = productList.value.filter(item => item.id !== row.id)
-    ElMessage.success('商品刪除成功')
-  }).catch(() => {
-    ElMessage.info('已取消刪除')
-  })
-}
-
-// 批次刪除多個已勾選商品
-function handleBatchDelete() {
-  if (selectedRows.value.length === 0) {
-    ElMessage.warning('請先勾選要刪除的商品！')
-    return
-  }
-
-  ElMessageBox.confirm(
-    `確定要批次刪除選中的 ${selectedRows.value.length} 筆商品嗎？`,
-    '批次操作確認',
-    {
-      confirmButtonText: '批次刪除',
-      cancelButtonText: '取消',
-      type: 'danger'
-    }
-  ).then(() => {
-    const selectedIds = selectedRows.value.map(item => item.id)
-    productList.value = productList.value.filter(item => !selectedIds.includes(item.id))
-    selectedRows.value = []
-    ElMessage.success('批次刪除成功！')
+  ElMessageBox.confirm(`確定要刪除「${row.name}」嗎？`, '警告', {
+    confirmButtonText: '確定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    productStore.deleteProduct(row.id)
+    ElMessage.success('刪除成功')
   }).catch(() => {})
 }
 
-// 跳轉到新增商品頁
-function goToAddProduct() {
-  router.push('/products/new')
+function handleBatchDelete() {
+  ElMessageBox.confirm(`確定批次刪除 ${selectedRows.value.length} 筆商品？`, '確認', {
+    confirmButtonText: '確定',
+    cancelButtonText: '取消',
+    type: 'danger'
+  }).then(() => {
+    const ids = selectedRows.value.map(r => r.id)
+    productStore.batchDelete(ids)
+    selectedRows.value = []
+    ElMessage.success('批次刪除成功')
+  }).catch(() => {})
 }
 
-// 跳轉到編輯商品頁（帶入 query 參數 id）
 function goToEditProduct(row) {
   router.push({ path: '/products/new', query: { id: row.id } })
 }
 
-
+function goToAddProduct() {
+  router.push('/products/new')
+}
 </script>
 
 <template>
   <div class="product-page">
-    <!-- 頂部篩選與操作卡片 -->
+    <!-- 頂部庫存預警通知橫條 -->
+    <el-alert
+      v-if="productStore.lowStockCount > 0"
+      :title="`⚠️ 庫存預警：目前共有 ${productStore.lowStockCount} 項商品低於安全庫存量，請盡快補貨！`"
+      type="warning"
+      show-icon
+      :closable="false"
+      class="warning-bar"
+    />
+
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="queryForm" class="filter-form">
-        <el-form-item label="商品名稱">
-          <el-input v-model="queryForm.keyword" placeholder="請輸入關鍵字" clearable />
+        <el-form-item label="商品/SKU">
+          <el-input v-model="queryForm.keyword" placeholder="搜尋名稱或 SKU" clearable />
         </el-form-item>
 
         <el-form-item label="商品類別">
@@ -223,12 +127,15 @@ function goToEditProduct(row) {
         </el-form-item>
 
         <el-form-item>
+          <el-checkbox v-model="queryForm.stockWarningOnly" label="僅顯示庫存預警" border />
+        </el-form-item>
+
+        <el-form-item>
           <el-button type="primary" icon="Search" @click="pagination.currentPage = 1">查詢</el-button>
           <el-button icon="Refresh" @click="handleReset">重設</el-button>
         </el-form-item>
       </el-form>
 
-      <!-- 操作按鈕列 -->
       <div class="action-bar">
         <el-button type="primary" icon="Plus" @click="goToAddProduct">新增商品</el-button>
         <el-button
@@ -242,68 +149,56 @@ function goToEditProduct(row) {
       </div>
     </el-card>
 
-    <!-- 主要資料表格 -->
     <el-card shadow="never" class="table-card">
       <el-table
         :data="displayedProducts"
-        v-loading="loading"
         stripe
         border
         style="width: 100%"
         @selection-change="handleSelectionChange"
       >
-        <!-- 多選勾選框欄位 -->
-        <el-table-column type="selection" width="55" align="center" />
-        <el-table-column prop="id" label="ID" width="80" align="center" />
-
-        <!-- 自訂縮圖 Slot -->
-        <el-table-column label="商品封面" width="100" align="center">
+        <el-table-column type="selection" width="50" align="center" />
+        <el-table-column prop="id" label="ID" width="70" align="center" />
+        <el-table-column prop="sku" label="商品 SKU" width="140" align="center">
           <template #default="scope">
-            <el-image
-              :src="scope.row.cover"
-              fit="cover"
-              class="product-thumb"
-              :preview-src-list="[scope.row.cover]"
-              preview-teleported
-            />
+            <el-tag type="info" effect="plain">{{ scope.row.sku }}</el-tag>
           </template>
         </el-table-column>
 
-        <el-table-column prop="name" label="商品名稱" min-width="180" />
-        <el-table-column prop="category" label="分類" width="120" align="center">
+        <el-table-column label="商品封面" width="80" align="center">
           <template #default="scope">
-            <el-tag effect="plain">{{ scope.row.category }}</el-tag>
+            <el-image :src="scope.row.cover" fit="cover" class="product-thumb" />
           </template>
         </el-table-column>
 
-        <!-- 金額格式化 -->
-        <el-table-column prop="price" label="售價" width="120" align="right">
+        <el-table-column prop="name" label="商品名稱" min-width="160" />
+        <el-table-column prop="category" label="分類" width="110" align="center" />
+
+        <el-table-column prop="price" label="售價" width="110" align="right">
           <template #default="scope">
-            <span class="price-text">NT$ {{ scope.row.price.toLocaleString() }}</span>
+            <span class="price-text">NT$ {{ Number(scope.row.price).toLocaleString() }}</span>
           </template>
         </el-table-column>
 
-        <!-- 庫存提示標籤 -->
-        <el-table-column prop="stock" label="庫存" width="100" align="center">
+        <!-- 庫存與安全庫存預警欄位 -->
+        <el-table-column label="當前 / 最低庫存" width="150" align="center">
           <template #default="scope">
-            <el-tag :type="scope.row.stock > 10 ? 'success' : (scope.row.stock === 0 ? 'danger' : 'warning')">
-              {{ scope.row.stock === 0 ? '缺貨中' : scope.row.stock }}
-            </el-tag>
+            <div>
+              <el-tag :type="scope.row.stock <= scope.row.minStock ? 'danger' : 'success'" size="small">
+                {{ scope.row.stock }} 件
+              </el-tag>
+              <span class="min-stock-hint"> (下限: {{ scope.row.minStock }})</span>
+            </div>
           </template>
         </el-table-column>
 
-        <!-- 上架 Switch 開關 -->
-        <el-table-column label="狀態" width="100" align="center">
+        <el-table-column label="狀態" width="90" align="center">
           <template #default="scope">
-            <el-switch
-              v-model="scope.row.status"
-              @change="handleStatusChange(scope.row)"
-            />
+            <el-switch v-model="scope.row.status" @change="handleStatusChange(scope.row)" />
           </template>
         </el-table-column>
 
-        <!-- 操作欄位 -->
-        <el-table-column label="操作" width="160" align="center" fixed="right">
+        <el-table-column label="操作" width="140" align="center" fixed="right">
           <template #default="scope">
             <el-button size="small" type="primary" link @click="goToEditProduct(scope.row)">編輯</el-button>
             <el-button size="small" type="danger" link @click="handleDelete(scope.row)">刪除</el-button>
@@ -311,7 +206,6 @@ function goToEditProduct(row) {
         </el-table-column>
       </el-table>
 
-      <!-- 底部動態分頁器 -->
       <div class="pagination-container">
         <el-pagination
           v-model:current-page="pagination.currentPage"
@@ -332,32 +226,34 @@ function goToEditProduct(row) {
   flex-direction: column;
   gap: 16px;
 }
-.filter-card {
-  border-radius: 8px;
+.warning-bar {
+  border-radius: 6px;
 }
-.filter-form {
-  margin-bottom: -10px;
+.filter-card, .table-card {
+  border-radius: 8px;
 }
 .action-bar {
   margin-top: 15px;
   padding-top: 15px;
   border-top: 1px dashed #ebeef5;
 }
-.table-card {
-  border-radius: 8px;
-}
 .product-thumb {
-  width: 50px;
-  height: 50px;
+  width: 45px;
+  height: 45px;
   border-radius: 6px;
 }
 .price-text {
   font-weight: bold;
   color: #f56c6c;
 }
+.min-stock-hint {
+  font-size: 12px;
+  color: #909399;
+  margin-left: 4px;
+}
 .pagination-container {
   display: flex;
   justify-content: flex-end;
-  margin-top: 20px;
+  margin-top: 15px;
 }
 </style>

@@ -60,7 +60,13 @@ const router = createRouter({
       name: 'not-found',
       component: () => import('../views/NotFoundView.vue'), // [cite: 108, 126]
       meta: { hideLayout: true } // [cite: 108, 126]
-    }
+    },
+    {
+  path: '/logs',
+  name: 'logs',
+  component: () => import('../views/LogsView.vue'),
+  meta: { requiresAuth: true, title: '審計日誌' }
+  }
   ]
 })
 

@@ -79,7 +79,14 @@ function handleLogout() {
           <el-icon><Setting /></el-icon>
           <span>個人設定</span>
         </el-menu-item>
+        <el-menu-item index="/logs">
+  <el-icon><Document /></el-icon>
+  <span>審計日誌</span>
+</el-menu-item>
+
       </el-menu>
+
+      
     </el-aside>
 
     <el-container>
